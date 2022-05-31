@@ -1,0 +1,27 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+h5py = "*"
+jupyter = "*"
+jupyterlab = "*"
+matplotlib = "*"
+numpy = "*"
+pandas = "*"
+scipy = "*"
+scanpy = {extras = ["leiden"], version = "*"}
+scikit-misc = "*"
+plotly = "*"
+#yellowbrick = "*"
+#python-igraph = "*"
+#igraph = "*"
+#leidenalg = "*"
+matplotlib-venn = "*"
+pillow = "==9.0.1"
+
+[dev-packages]
+
+[requires]
+python_version = "3.7"
