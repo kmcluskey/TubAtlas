@@ -124,18 +124,44 @@ class GeneSelector(object):
 
     def write_csv(self, df, filename, tissue):
 
+
         try:
             write_dir = os.path.join(self.RESULTS_FOLDER, tissue)
 
             if os.path.exists(write_dir):
-
                 df.to_csv(os.path.join(write_dir, filename))
+                print ("Wrote out", os.path.join(write_dir, filename) )
             else:
                 os.makedirs(write_dir)
                 df.to_csv(os.path.join(write_dir, filename))
+                print ("Wrote out", os.path.join(write_dir, filename))
 
         except Exception as e:
             print ("Writing failed because of ", e)
+
+    def analyse_tissues(self, tissues, populations):
+
+        """
+        This method should eventually write out in Table form all of the data that is useful to a
+        set of Tissues and Populations
+        :param tissues: List of tissues for analysis
+        :param pop: All of the populations to be used in the analysis
+        :return: Write and print out all of the information associated with those tissues
+
+        """
+        # Write out all of the genes that are found AB_FACTOR* those genes in all other tissues
+        for p in populations:
+
+            tissue_name = '_'.join(tissues)
+            
+            fname =tissue_name+p+"_all.csv"
+            df = self.get_ab_en_df(tissues, p)
+            self.write_csv(df, fname, tissue_name)
+
+        # Calculate the subsets and write out the corresponding tables
+        self.draw_venn_diagram(tissues, populations)
+
+
 
 
 
@@ -327,23 +353,6 @@ class GeneSelector(object):
 
         return column_names, tissue_abundance
 
-
-    # def get_tissue_series(self, tissue, en_ab, pop):
-    #     """
-    #     :param tissue: Tissue type of interest, string
-    #     :param en_ab: String: abundance or enrich
-    #     :param pop: M, F or L
-    #     :return: series containing the tissue of interest and appropriate data (enrich or abundance)
-    #     """
-    #
-    #     df = self.df_dict[(pop, en_ab)]
-    #     tissue_series = df[tissue]
-    #
-    #     # Choose a new name bases on tissue, en_ab and population and rename in order to merge df later
-    #     new_name = tissue[:2]+'_'+en_ab[:2]+'_'+pop
-    #     tissue_series.rename(new_name, inplace=True)
-    #
-    #     return tissue_series
 
     def get_gene_code_dict(self, fbgn_codes):
         """
