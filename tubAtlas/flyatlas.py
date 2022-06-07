@@ -2,6 +2,7 @@ import pandas as pd
 from matplotlib_venn import venn2
 from matplotlib_venn import venn3
 from matplotlib import pyplot as plt
+from IPython.display import display
 
 import os
 
@@ -25,6 +26,7 @@ class GeneSelector(object):
         self.enrich_mf, self.enrich_m, self.enrich_f, self.enrich_l, self.f_abundance, \
         self.m_abundance, self.l_abundance, self.mf_abundance = self.set_up_dfs()
 
+        #This file has a few FBgN additions that were not in the sept21 version
         self.all_genes_df = pd.read_csv(os.path.join(self.DATA_FOLDER,'FlyAtlas2_Alltissues_Allgenes_sept21_2.csv'),
                                    encoding='unicode_escape').set_index('FlyBaseID')
 
@@ -118,13 +120,23 @@ class GeneSelector(object):
         l_abundance.name = 'l_abundance'
         mf_abundance.name = 'mf_abundance'
 
-
-
         return enrich_mf, enrich_m, enrich_f, enrich_l, f_abundance, m_abundance, l_abundance, mf_abundance
 
     def write_csv(self, df, filename, tissue):
 
-        df.to_csv(os.path.join(self.RESULTS_FOLDER, tissue, filename), encoding='unicode_escape')
+        try:
+            write_dir = os.path.join(self.RESULTS_FOLDER, tissue)
+
+            if os.path.exists(write_dir):
+
+                df.to_csv(os.path.join(write_dir, filename))
+            else:
+                os.makedirs(write_dir)
+                df.to_csv(os.path.join(write_dir, filename))
+
+        except Exception as e:
+            print ("Writing failed because of ", e)
+
 
 
     def get_abundance_list(self, tissues, pop):
@@ -154,6 +166,8 @@ class GeneSelector(object):
 
         subset_dict = self.calc_venn_subsets(pop_dict)
 
+        self.write_subset_dfs(tissues, subset_dict)
+
         return subset_dict
 
     def calc_venn_subsets(self, pop_dict):
@@ -161,26 +175,29 @@ class GeneSelector(object):
         :param pop_dict: population name (M, F, L) and genes in set
         :return: subset_dict subset_name and genes
         """
-        set_m = pop_dict['M']
-        set_f = pop_dict['F']
-        set_l = pop_dict['L']
-
-
         subset_dict = {}
+        try:
 
-        subset_dict["m_only"]=set_m.difference(set_f.union(set_l))
-        subset_dict["f_only"]=set_f.difference(set_m.union(set_l))
-        subset_dict["l_only"]=set_l.difference(set_m.union(set_f))
+            set_m = pop_dict['M']
+            set_f = pop_dict['F']
+            set_l = pop_dict['L']
 
-        # All sets
-        subset_dict["mfl"] = set.intersection(*map(set, [set_m, set_l, set_f]))
+            subset_dict["m_only"]=set_m.difference(set_f.union(set_l))
+            subset_dict["f_only"]=set_f.difference(set_m.union(set_l))
+            subset_dict["l_only"]=set_l.difference(set_m.union(set_f))
 
-        # M&L but not F
-        subset_dict["ml_not_f"] = set_l.intersection(set_m).difference(set_f)
-        # M&F but not L
-        subset_dict["mf_not_l"] = set_f.intersection(set_m).difference(set_l)
-        # F&L but not M
-        subset_dict["fl_not_m"] = set_f.intersection(set_l).difference(set_m)
+            # All sets
+            subset_dict["mfl"] = set.intersection(*map(set, [set_m, set_l, set_f]))
+
+            # M&L but not F
+            subset_dict["ml_not_f"] = set_l.intersection(set_m).difference(set_f)
+            # M&F but not L
+            subset_dict["mf_not_l"] = set_f.intersection(set_m).difference(set_l)
+            # F&L but not M
+            subset_dict["fl_not_m"] = set_f.intersection(set_l).difference(set_m)
+
+        except KeyError as e:
+            print ("Currently this method only works when comparing all 3 populations")
 
 
         return subset_dict
@@ -387,12 +404,17 @@ class GeneSelector(object):
         gt_av = list(gt_av_tissues.index.values)
         gt_10 = list(gt_10_tissues[gt_10_tissues].index.values)
 
-        print (gene, "\nAll :", gt_av, "\nFPKM >", GEN_FPMK_MIN,":",gt_10, "\n" )
+        # print (gene, "\nAll :", gt_av, "\nFPKM >", GEN_FPMK_MIN,":",gt_10, "\n" )
 
         return gt_av, gt_10
 
 
-    def get_tissue_ab_en(self, tissues):
+    def get_tissue_ab_en(self, tissues, genes):
+        """
+        Given a tissues or list of tissues give the abundance and enrichment values for a list of genes
+        :param tissues: Tissue or list of tissues as strings
+        :return: a DF of the abundance and enrichment values for the tissues, for the given genes
+        """
 
         en_ab_tissue_df = pd.DataFrame()
 
@@ -420,8 +442,13 @@ class GeneSelector(object):
                     pass
                     print ("No tissue of this name for these DFs ", ab_name, en_name)
 
+        en_ab_tissue_genes = en_ab_tissue_df.loc[genes]
+        gene_codes = self.get_gene_code_df(genes)
 
-        return en_ab_tissue_df
+        return_df = gene_codes.join(en_ab_tissue_genes)
+
+
+        return return_df
 
     def abundant_tissues_df(self, query_genes, ab_en, pop_list, AVG_MULT=1, FPKM_MIN=10):
         """
@@ -451,6 +478,43 @@ class GeneSelector(object):
         abundant_tissues_df = pd.DataFrame(dict_list, index=pop_ex_list)
 
         return abundant_tissues_df
+
+    # This orderes the given genes, adds on the ab and en for the selected tissues
+
+    def write_subset_dfs(self, tissues, subset_dict):
+
+        """
+
+        :param tissues: The Tissues of interest
+        :param subset_dict: The dictionary with the subset (e.g. m_only) and the genes it contains
+        :return: Writes out the subset to a Tissue specfic directory
+        """
+
+        #These dictionaries might be better off in some sort of DB structure - this will suffice for mow
+        # A disctionary that gives us the other populations to analyse given the subsets.
+        other_pops_dict = {'m_only': ["L", "F"], 'f_only': ["L", "M"], 'l_only': ["M", "F"], 'mfl': [],
+                           'ml_not_f': ["F"], 'mf_not_l': ["L"], 'fl_not_m': ["M"]}
+        # A dictionary to tell us how to order the subsets
+        ordered_dict = {'m_only': "M", 'f_only': "F", 'l_only': "L", 'mfl': "MF", 'ml_not_f': "M", 'mf_not_l': "M",
+                        'fl_not_m': "F"}
+
+        for k in subset_dict.keys():
+            print(k)
+            tissue = '_'.join(tissues)
+            ordered_mfl = self.order_genes(subset_dict[k], ordered_dict[k], "enrich", tissues[0])
+            df = self.get_tissue_ab_en(tissues, ordered_mfl)
+            ab_tissue = self.abundant_tissues_df(subset_dict[k], "abundance", other_pops_dict[k], AVG_MULT=1,
+                                                         FPKM_MIN=10).T
+            new_df = df.join(ab_tissue)
+            file_name = k + '_' + tissue + '.csv'
+            print ("writing ", k)
+            display (new_df)
+            self.write_csv(new_df, file_name, tissue)
+
+
+        print ("Written the abundance/enrichment tables to Tissue specific directories")
+
+
 
 
 
