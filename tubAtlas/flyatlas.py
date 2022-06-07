@@ -15,7 +15,7 @@ class GeneSelector(object):
     compared to the surrounding tissues
 
     """
-    def __init__(self, AB_FACTOR=10, FPKM_MIN=10):
+    def __init__(self, AB_FACTOR=10, FPKM_MIN=10, AVG_MULT=1):
 
         '''
         :param AB_FACTOR: Abundance factor - how much more abundant you want your tissue to be - default is 10
@@ -40,6 +40,9 @@ class GeneSelector(object):
         self.AB_FACTOR = AB_FACTOR
         # If you don't want a primary tissue then just pass zero for this
         self.FPKM_MIN = FPKM_MIN
+        # When a tissue/set of tissues are not the only tissue with AB_FACTORxgreater than all other tissues this parameter
+        # is used to find out which other tissues have that gene > AVG_MULT*Average
+        self.AVG_MULT = AVG_MULT
 
         self.ab_df_list = [self.f_abundance, self.m_abundance, self.l_abundance]
         self.en_df_list = [self.enrich_f, self.enrich_m, self.enrich_l]
@@ -125,7 +128,6 @@ class GeneSelector(object):
 
     def write_csv(self, df, filename, tissue):
 
-
         try:
             write_dir = os.path.join(self.RESULTS_FOLDER, tissue)
 
@@ -140,30 +142,6 @@ class GeneSelector(object):
         except Exception as e:
             logger.warning("Writing failed because of %s " % e)
 
-    def analyse_tissues(self, tissues, populations):
-
-        """
-        This method should eventually write out in Table form all of the data that is useful to a
-        set of Tissues and Populations
-        :param tissues: List of tissues for analysis
-        :param pop: All of the populations to be used in the analysis
-        :return: Write and print out all of the information associated with those tissues
-
-        """
-        # Write out all of the genes that are found AB_FACTOR* those genes in all other tissues
-        for p in populations:
-
-            tissue_name = '_'.join(tissues)
-            
-            fname =tissue_name+p+"_all.csv"
-            df = self.get_ab_en_df(tissues, p)
-            self.write_csv(df, fname, tissue_name)
-
-        # Calculate the subsets and write out the corresponding tables
-        self.draw_venn_diagram(tissues, populations)
-
-
-
 
 
     def get_abundance_list(self, tissues, pop):
@@ -172,7 +150,18 @@ class GeneSelector(object):
 
         return ab_list
 
-    def draw_venn_diagram(self, tissues, pop_list):
+    def analyse_tissues(self, tissues, pop_list):
+
+        """
+        This method should eventually write out in Table form all of the data that is useful to a
+        set of Tissues and Populations
+        :param tissues: List of tissues for analysis
+        :param pop: All of the populations to be used in the analysis
+        :return: :return: subset_dict - dict for all of the venn diagram subsets and genes in those subsets
+
+        Write and print out all of the information associated with those tissues
+        """
+
 
         pop_dict = self.get_pop_dict(tissues, pop_list)
         pop_sets = list(pop_dict.values())
@@ -180,19 +169,47 @@ class GeneSelector(object):
         labels = tuple(["Enrich"+x for x in pop_list])
         plot_title = str(self.AB_FACTOR)+"x Abundant genes in "+', '.join(map(str, tissues))
 
+        # Write out the venn diagram and put in the appropriate directory
+        tissue = '_'.join(tissues)
+        fname = tissue + '_venn_diagram.png'
 
         if len(pop_list)==3:
             venn3(pop_sets, set_labels=(labels))
             plt.title(plot_title)
+            try:
+                write_dir = os.path.join(self.RESULTS_FOLDER, tissue)
+
+                if os.path.exists(write_dir):
+                    plt.savefig(os.path.join(write_dir, fname))
+                    logger.info("Saving figure %s" % os.path.join(write_dir, fname))
+                else:
+                    os.makedirs(write_dir)
+                    plt.savefig(os.path.join(write_dir, fname))
+                    logger.info("Saving figure %s" % os.path.join(write_dir, fname))
+            except Exception as e:
+                logger.warning("Writing failed because of %s " % e)
+
             plt.show()
 
         else:
             venn2(pop_sets, set_labels=(labels))
             plt.title(plot_title)
+            try:
+                write_dir = os.path.join(self.RESULTS_FOLDER, tissue)
+
+                if os.path.exists(write_dir):
+                    plt.savefig(os.path.join(write_dir, fname))
+                    logger.info("Saving figure %s" % os.path.join(write_dir, fname))
+                else:
+                    os.makedirs(write_dir)
+                    plt.savefig(os.path.join(write_dir, fname))
+                    logger.info("Saving figure %s" % os.path.join(write_dir, fname))
+            except Exception as e:
+                logger.warning("Writing failed because of %s " % e)
+
             plt.show()
 
         subset_dict = self.calc_venn_subsets(pop_dict)
-
         self.write_subset_dfs(tissues, subset_dict)
 
         return subset_dict
@@ -289,14 +306,11 @@ class GeneSelector(object):
 
         if not ab_genes.empty:
 
-
             ### Remove FbGN codes where enrichment is NaN
             # Get all of the FBGN codes from our abundance calc and grab the enrichment values
             matching_enrich_df = en_df.loc[list(ab_genes.index)]
 
-
             # Remove the genes where the enrichment is Nan and return the list of genes
-
             # enric_df[enric_df[tissues].notna().all(axis=1)]
             non_na_indexes = matching_enrich_df[(matching_enrich_df[tissues].notna().all(axis=1))].index
 
@@ -314,6 +328,13 @@ class GeneSelector(object):
             ab_en_df = pd.merge(name_df, ab_en_df, left_index=True, right_index=True)
 
         logger.info("We are returning {} genes from {} ordered by {} enrichment ordered by {}".format(ab_en_df.shape[0], pop, tissues, tissues[0]))
+
+        #Save this df when the method is run
+
+        tissue_name = '_'.join(tissues)
+        fname = tissue_name + pop + "_all.csv"
+        self.write_csv(ab_en_df, fname, tissue_name)
+
 
         return ab_en_df
 
@@ -426,7 +447,6 @@ class GeneSelector(object):
         :param tissues: Tissue or list of tissues as strings
         :return: a DF of the abundance and enrichment values for the tissues, for the given genes
         """
-
         en_ab_tissue_df = pd.DataFrame()
 
         for df_ab, df_en in zip(self.ab_df_list, self.en_df_list):
@@ -435,9 +455,7 @@ class GeneSelector(object):
             en_name = df_en.name
 
             for tissue in tissues:
-
                 try:
-
                     tissue_ab = df_ab[tissue]
                     tissue_en = df_en[tissue]
                     name_ab = tissue_ab.name + self.suffix_dict[ab_name]
@@ -449,7 +467,6 @@ class GeneSelector(object):
                     en_ab_tissue_df = pd.concat([en_ab_tissue_df, tissue_ab, tissue_en], axis=1)
 
                 except KeyError:
-
                     pass
                     logger.warning("No tissue of this name for these DFs {} {} ".format(ab_name, en_name))
 
@@ -473,7 +490,6 @@ class GeneSelector(object):
 
         :return: DF with higher than average abundant tissues for set of genes in a df gene:population: Tissue_list
         """
-
         logger.info("Getting tissues greater that {avg_mult}* average with MIN FPMK of {fpmk_min}".format(avg_mult=AVG_MULT,fpmk_min=FPKM_MIN))
         name_dict = {"L": "Larval", "F": "Female", "M": "Male"}
         dict_list = []
@@ -496,7 +512,6 @@ class GeneSelector(object):
     def write_subset_dfs(self, tissues, subset_dict):
 
         """
-
         :param tissues: The Tissues of interest
         :param subset_dict: The dictionary with the subset (e.g. m_only) and the genes it contains
         :return: Writes out the subset to a Tissue specfic directory
@@ -514,8 +529,7 @@ class GeneSelector(object):
             tissue = '_'.join(tissues)
             ordered_mfl = self.order_genes(subset_dict[k], ordered_dict[k], "enrich", tissues[0])
             df = self.get_tissue_ab_en(tissues, ordered_mfl)
-            ab_tissue = self.abundant_tissues_df(subset_dict[k], "abundance", other_pops_dict[k], AVG_MULT=1,
-                                                         FPKM_MIN=10).T
+            ab_tissue = self.abundant_tissues_df(subset_dict[k], "abundance", other_pops_dict[k], self.AVG_MULT, self.FPKM_MIN).T
             new_df = df.join(ab_tissue)
             file_name = k + '_' + tissue + '.csv'
             logger.info("Writing the DF for {}".format(k))
