@@ -1,4 +1,5 @@
 import pandas as pd
+from loguru import logger
 from matplotlib_venn import venn2
 from matplotlib_venn import venn3
 from matplotlib import pyplot as plt
@@ -130,14 +131,14 @@ class GeneSelector(object):
 
             if os.path.exists(write_dir):
                 df.to_csv(os.path.join(write_dir, filename))
-                print ("Wrote out", os.path.join(write_dir, filename) )
+                logger.info("Wrote out %s" % os.path.join(write_dir, filename))
             else:
                 os.makedirs(write_dir)
                 df.to_csv(os.path.join(write_dir, filename))
-                print ("Wrote out", os.path.join(write_dir, filename))
+                logger.info("Wrote out %s" % os.path.join(write_dir, filename))
 
         except Exception as e:
-            print ("Writing failed because of ", e)
+            logger.warning("Writing failed because of %s " % e)
 
     def analyse_tissues(self, tissues, populations):
 
@@ -223,7 +224,8 @@ class GeneSelector(object):
             subset_dict["fl_not_m"] = set_f.intersection(set_l).difference(set_m)
 
         except KeyError as e:
-            print ("Currently this method only works when comparing all 3 populations")
+            logger.error("Currently this method only works when comparing all 3 populations, "
+                         "please do that until this is rewritten")
 
 
         return subset_dict
@@ -253,7 +255,8 @@ class GeneSelector(object):
 
         match_list = set.intersection(*map(set, di_list))
 
-        print("There are", len(match_list), "matches in these dfs")
+        logger.info("There are %d matches in these dfs" % len(match_list))
+
         return match_list
 
     def get_pop_dict(self, tissues, pop_list):
@@ -310,8 +313,7 @@ class GeneSelector(object):
             name_df = self.get_gene_code_df(list(ab_en_df.index))
             ab_en_df = pd.merge(name_df, ab_en_df, left_index=True, right_index=True)
 
-        print("We are returning ", ab_en_df.shape[0], "genes from ", pop, tissues, "ordered by ", tissues[0],
-                  "enrichment")
+        logger.info("We are returning {} genes from {} ordered by {} enrichment ordered by {}".format(ab_en_df.shape[0], pop, tissues, tissues[0]))
 
         return ab_en_df
 
@@ -321,7 +323,7 @@ class GeneSelector(object):
         coding = ab_en_df[ab_en_df.Gene.str.startswith("CG")]
         non_coding = ab_en_df[ab_en_df.Gene.str.startswith("CR")]
 
-        print("Returning ", coding.shape[0], " coding and", non_coding.shape[0], "non-coding genes")
+        logger.info("Returning {} coding and {} non-coding genes".format(coding.shape[0], non_coding.shape[0]))
 
         return coding, non_coding
 
@@ -370,7 +372,7 @@ class GeneSelector(object):
                 fb_sy = row.Symbol[0]
                 fb_name = row.Name[0]
             except Exception as e:
-                print("Returning None for ", fbgn, "as ", e)
+                logger.warning("Returning None for {} as {} ".format(fbgn, e))
 
             fb_genes[fbgn] = fb_id, fb_sy, fb_name
 
@@ -449,7 +451,7 @@ class GeneSelector(object):
                 except KeyError:
 
                     pass
-                    print ("No tissue of this name for these DFs ", ab_name, en_name)
+                    logger.warning("No tissue of this name for these DFs {} {} ".format(ab_name, en_name))
 
         en_ab_tissue_genes = en_ab_tissue_df.loc[genes]
         gene_codes = self.get_gene_code_df(genes)
@@ -471,7 +473,8 @@ class GeneSelector(object):
 
         :return: DF with higher than average abundant tissues for set of genes in a df gene:population: Tissue_list
         """
-        print (FPKM_MIN)
+
+        logger.info("Getting tissues greater that {avg_mult}* average with MIN FPMK of {fpmk_min}".format(avg_mult=AVG_MULT,fpmk_min=FPKM_MIN))
         name_dict = {"L": "Larval", "F": "Female", "M": "Male"}
         dict_list = []
         pop_ex_list = []
@@ -508,7 +511,6 @@ class GeneSelector(object):
                         'fl_not_m': "F"}
 
         for k in subset_dict.keys():
-            print(k)
             tissue = '_'.join(tissues)
             ordered_mfl = self.order_genes(subset_dict[k], ordered_dict[k], "enrich", tissues[0])
             df = self.get_tissue_ab_en(tissues, ordered_mfl)
@@ -516,12 +518,9 @@ class GeneSelector(object):
                                                          FPKM_MIN=10).T
             new_df = df.join(ab_tissue)
             file_name = k + '_' + tissue + '.csv'
-            print ("writing ", k)
+            logger.info("Writing the DF for {}".format(k))
             display (new_df)
             self.write_csv(new_df, file_name, tissue)
-
-
-        print ("Written the abundance/enrichment tables to Tissue specific directories")
 
 
 
