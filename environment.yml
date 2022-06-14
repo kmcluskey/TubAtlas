@@ -1,0 +1,23 @@
+name: TubAtlas-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - h5py
+  - ipython
+  - matplotlib
+  - matplotlib-venn 
+  - pillow
+  - loguru
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - seaborn
+  - scikit-learn
+  - loguru
+  - jupyterlab
+  - ipywidgets
+  - pip 
+
+
