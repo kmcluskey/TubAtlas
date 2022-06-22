@@ -5,7 +5,7 @@ from matplotlib_venn import venn3
 from matplotlib import pyplot as plt
 from IPython.display import display
 
-import os
+import os, sys
 
 
 class GeneSelector(object):
@@ -221,24 +221,23 @@ class GeneSelector(object):
         """
         subset_dict = {}
         try:
-
             set_m = pop_dict['M']
             set_f = pop_dict['F']
             set_l = pop_dict['L']
 
-            subset_dict["m_only"]=set_m.difference(set_f.union(set_l))
-            subset_dict["f_only"]=set_f.difference(set_m.union(set_l))
-            subset_dict["l_only"]=set_l.difference(set_m.union(set_f))
+            subset_dict["m_only"] = list(set_m.difference(set_f.union(set_l)))
+            subset_dict["f_only"] = list(set_f.difference(set_m.union(set_l)))
+            subset_dict["l_only"] = list(set_l.difference(set_m.union(set_f)))
 
             # All sets
-            subset_dict["mfl"] = set.intersection(*map(set, [set_m, set_l, set_f]))
+            subset_dict["mfl"] = list(set.intersection(*map(set, [set_m, set_l, set_f])))
 
             # M&L but not F
-            subset_dict["ml_not_f"] = set_l.intersection(set_m).difference(set_f)
+            subset_dict["ml_not_f"] = list(set_l.intersection(set_m).difference(set_f))
             # M&F but not L
-            subset_dict["mf_not_l"] = set_f.intersection(set_m).difference(set_l)
+            subset_dict["mf_not_l"] = list(set_f.intersection(set_m).difference(set_l))
             # F&L but not M
-            subset_dict["fl_not_m"] = set_f.intersection(set_l).difference(set_m)
+            subset_dict["fl_not_m"] = list(set_f.intersection(set_l).difference(set_m))
 
         except KeyError as e:
             logger.error("Currently this method only works when comparing all 3 populations, "
@@ -350,29 +349,35 @@ class GeneSelector(object):
 
     def add_tissue_abundance(self, tissues, ab_df):
 
-        column_names =[]
-        tissue_abundance = ab_df.copy()
+        if all(t in list(ab_df.columns) for t in tissues):
 
-        primary_tissue = tissues[0]
+            column_names = []
+            tissue_abundance = ab_df.copy()
+            primary_tissue = tissues[0]
 
-        # Work only with Tubule tissues where the FPKM value >10
-        ab_fpmk = ab_df[ab_df[primary_tissue]>self.FPKM_MIN]
+            # Work only with Tubule tissues where the FPKM value >10
+            ab_fpmk = ab_df[ab_df[primary_tissue] > self.FPKM_MIN]
 
-        # Drop both sets of tissues from the DF in order to calculate the max without them
-        ab_no_tub = ab_fpmk.drop(tissues, axis=1)
-        ab_no_tub['max'] = ab_no_tub.max(axis=1)
+            # Drop both sets of tissues from the DF in order to calculate the max without them
 
-        for tissue in tissues:
-            # Divide the FPMK tissue value of interest by 10
-            tissue_abundance[tissue + '_div10'] = ab_df[tissue] / self.AB_FACTOR
-            # Check if tissue_div10 >= the FPKM values in all of the other tissue (as long as it's not zero)
-            column_name = tissue + '_ab'
-            column_names.append(column_name)
+            ab_no_tub = ab_fpmk.drop(tissues, axis=1)
+            ab_no_tub['max'] = ab_no_tub.max(axis=1)
 
-            # Select genes with FPMK >10
-            tissue_abundance = tissue_abundance.loc[ab_fpmk.index]
-            tissue_abundance[column_name] = (tissue_abundance[tissue + '_div10'] >= ab_no_tub['max']) & (
-                    tissue_abundance[tissue + '_div10'] != 0.00)
+            for tissue in tissues:
+                # Divide the FPMK tissue value of interest by 10
+                tissue_abundance[tissue + '_div10'] = ab_df[tissue] / self.AB_FACTOR
+                # Check if tissue_div10 >= the FPKM values in all of the other tissue (as long as it's not zero)
+                column_name = tissue + '_ab'
+                column_names.append(column_name)
+
+                # Select genes with FPMK >10
+                tissue_abundance = tissue_abundance.loc[ab_fpmk.index]
+                tissue_abundance[column_name] = (tissue_abundance[tissue + '_div10'] >= ab_no_tub['max']) & (
+                        tissue_abundance[tissue + '_div10'] != 0.00)
+
+        else:
+            sys.exit("You seem to have chosen a tissue/population combination that is not possible, please try again")
+
 
         return column_names, tissue_abundance
 
@@ -400,14 +405,10 @@ class GeneSelector(object):
         return fb_genes
 
     def get_gene_code_df(self, fbgn_codes):
-
         m_dict = self.get_gene_code_dict(fbgn_codes)
         name_df = pd.DataFrame(m_dict).T
         name_df.columns = ["Gene", "Symbol", "Name"]
-
         return name_df
-
-
 
     def greater_than_average_tissues(self, pop, ab_en, gene, AVG_MULT=2, GEN_FPMK_MIN = 10):
         """
@@ -527,14 +528,17 @@ class GeneSelector(object):
 
         for k in subset_dict.keys():
             tissue = '_'.join(tissues)
-            ordered_mfl = self.order_genes(subset_dict[k], ordered_dict[k], "enrich", tissues[0])
-            df = self.get_tissue_ab_en(tissues, ordered_mfl)
-            ab_tissue = self.abundant_tissues_df(subset_dict[k], "abundance", other_pops_dict[k], self.AVG_MULT, self.FPKM_MIN).T
-            new_df = df.join(ab_tissue)
-            file_name = k + '_' + tissue + '.csv'
-            logger.info("Writing the DF for {}".format(k))
-            display (new_df)
-            self.write_csv(new_df, file_name, tissue)
+            if subset_dict[k]:
+                ordered_mfl = self.order_genes(subset_dict[k], ordered_dict[k], "enrich", tissues[0])
+                df = self.get_tissue_ab_en(tissues, ordered_mfl)
+                ab_tissue = self.abundant_tissues_df(subset_dict[k], "abundance", other_pops_dict[k], self.AVG_MULT, self.FPKM_MIN).T
+                new_df = df.join(ab_tissue)
+                file_name = k + '_' + tissue + '.csv'
+                logger.info("Writing the DF for {}".format(k))
+                display (new_df)
+                self.write_csv(new_df, file_name, tissue)
+            else:
+                logger.info("There are no genes in set %s and hence no output table " % k)
 
 
 
